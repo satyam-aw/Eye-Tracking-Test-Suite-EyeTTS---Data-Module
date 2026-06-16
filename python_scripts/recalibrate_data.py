@@ -9,7 +9,7 @@ w2, w3, s4, b5), and logs spatial error performance metrics to a central summary
 
 Usage:
   python recalibrate_data.py --type moving
-  python recalibrate_data.py --type static
+  python recalibrate_data.py --type static --with w1
 
 Pipeline Processing Logic:
   0. Early Skip: Skips processing if the participant already exists in the central error log.
@@ -45,16 +45,25 @@ parser.add_argument(
     choices=['moving', 'static'], 
     help="Specify the paradigm structure type: 'moving' or 'static'."
 )
+parser.add_argument(
+    '--with', 
+    type=str,
+    dest='with_val', # Using 'dest' because 'args.with' is a reserved keyword in Python
+    default='cal',
+    choices=['cal', 'w1', 'w2', 'w3', 's4', 'b5'],
+    help="Specify the calibration task, to calibrate all the other tasks with using linear regression (default: 'cal')."
+)
 args = parser.parse_args()
-cal_type = args.type.strip()
-is_moving = True if cal_type == "moving" else False
+target_type = args.type.strip()
+is_moving = True if target_type == "moving" else False
+calibrate_with = args.with_val
 
 # ---------------------------------------------------------------------------
 # Setup directories
 # ---------------------------------------------------------------------------
-participant_data = pathlib.Path(os.getcwd()) / "../participant-data"
-recalibrated_dir = f'../recalibrated_data_{cal_type}'
-os.makedirs(recalibrated_dir, exist_ok=True)
+raw_data_dir = get_raw_data_directory()
+recalibrated_data_dir = f'../recalibrated_data/{target_type}_target' if calibrate_with == "cal" else f'../recalibrated_data_others/{calibrate_with}/{target_type}_target'
+os.makedirs(recalibrated_data_dir, exist_ok=True)
 
 # Initialize Error DataFrame Schema
 cols = [
@@ -63,7 +72,7 @@ cols = [
     'b5_euc', 'b5_vec', 'b5_index', 'callibrate_euc', 'callibrate_vec',
     'callibrate_index', 'callibrate_pearsonr', 'callibrate_pearsonr_recal'
 ]
-error_df_path = os.path.join(recalibrated_dir, 'error_df.csv')
+error_df_path = os.path.join(recalibrated_data_dir, 'error_df.csv')
 error_df = pd.read_csv(error_df_path) if os.path.exists(error_df_path) else pd.DataFrame(columns=cols)
 
 active_folders = get_all_participants()
@@ -78,7 +87,7 @@ for participant in tqdm(active_folders, desc="Overall Progress", unit="participa
     if participant in error_df['Name'].values:
         continue
 
-    desktop_path = pathlib.Path(os.path.join(participant_data, participant))
+    desktop_path = pathlib.Path(os.path.join(raw_data_dir, participant))
     if not desktop_path.exists():
         raise FileNotFoundError(f"The directory '{desktop_path}' does not exist.")
 
@@ -87,8 +96,8 @@ for participant in tqdm(active_folders, desc="Overall Progress", unit="participa
     participant_calibration_csv = 'not_found'
 
     for file_name in all_eye_tracking_task_csvs:
-        full_path = os.path.join(participant_data, participant, file_name)
-        if "cal" in file_name:
+        full_path = os.path.join(raw_data_dir, participant, file_name)
+        if calibrate_with in file_name:
             participant_calibration_csv = full_path
         elif "csv" in file_name:
             raw_data_files.append(full_path)
@@ -111,7 +120,7 @@ for participant in tqdm(active_folders, desc="Overall Progress", unit="participa
     for file_path in tqdm(all_task_paths, desc=f" └─ Files ({participant})", unit="file"):
         base_name = os.path.basename(file_path)
         task_prefix = base_name.split('_')[0]
-        calibrated_task_csv_path = os.path.join(recalibrated_dir, f"{participant}_{task_prefix}_recal.csv")
+        calibrated_task_csv_path = os.path.join(recalibrated_data_dir, f"{participant}_{task_prefix}_recal.csv")
 
         # 1. Check for each calibrated file one by one. 
         if not os.path.exists(calibrated_task_csv_path):

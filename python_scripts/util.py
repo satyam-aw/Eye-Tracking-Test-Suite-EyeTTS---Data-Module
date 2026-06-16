@@ -334,36 +334,41 @@ def compute_task_errors(calibrated_task_csv_path, errors_for_task, base_name):
 
     return errors_for_task
 
-def get_raw_cal_and_w1_files_of(participant, all_raw_files):
-    """Filters a pre-loaded list of file names to find the calibration and w1
+def get_recalibrated_data_dir(target_type, calibrate_with):
+    if calibrate_with == 'cal':
+        return os.path.join(os.getcwd(), '..', 'recalibrated_data', f"{target_type}_target")
+    return os.path.join(os.getcwd(), '..', 'recalibrated_data_others', calibrate_with, f"{target_type}_target")
 
-    pairs for a specific participant.
-    """
-    # 1. Gather all files matching this specific participant from memory
-    participant_files = [f for f in all_raw_files if participant in f]
-
-    # 2. Extract the matching calibration and w1 file strings
-    cal_matches = [f for f in participant_files if "callibrate" in f]
-    w1_matches = [f for f in participant_files if "w1" in f]
-
-    # 3. Ensure both files exist before returning the tuple
-    if cal_matches and w1_matches:
-        return (participant, cal_matches[0], w1_matches[0])
-    else:
-        print(
-            f"Warning: Skipping {participant}. Missing calibration or w1 file."
-        )
-        return None  # Returning None is cleaner to filter out later than an empty tuple
+def get_raw_data_directory():
+    return os.path.abspath(os.path.join(os.getcwd(), '..', 'participant-data'))
 
 def get_all_participants():
-    participant_data = os.path.join(os.getcwd(), '..', 'participant-data')
-    if os.path.exists(participant_data):
-        subfolders = [f.name for f in os.scandir(participant_data) if f.is_dir()]
-    else:
+    participant_data = get_raw_data_directory()
+    
+    if not os.path.exists(participant_data):
         raise FileNotFoundError(f"The directory '{participant_data}' does not exist.")
+        
+    # Combine the prefix check and exclusion filter into a single step
+    exclusions = {'data_validate', 'recalibrated_data_moving', 'recalibrated_data_static', 'pilot_testing'}    
+    active_folders = [
+        f.name for f in os.scandir(participant_data)
+        if f.is_dir() and f.name.startswith("participant-") and f.name not in exclusions
+    ]
     
-    # Filter out excluded folders upfront for accurate counting
-    exclusions = ['data_validate', 'recalibrated_data_moving', 'recalibrated_data_static', 'pilot_testing']
-    active_folders = [f for f in subfolders if f not in exclusions]
     return active_folders
+
+def get_participant_raw_files(participant):
+    files_path = os.path.join(get_raw_data_directory(), participant)
+    all_raw_files = [
+        f
+        for f in os.listdir(files_path)
+        if os.path.isfile(os.path.join(files_path, f))
+    ]
+
+    tasks = ["w1","w2","w3","s4","b5","cal"]
+    tasks_file_dir = {}
+    for t in tasks:
+        matches = [f for f in all_raw_files if t in f]
+        tasks_file_dir[t] = os.path.join(files_path, matches[0]) if matches else None
     
+    return tasks_file_dir
